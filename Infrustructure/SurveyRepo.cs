@@ -1,4 +1,5 @@
 ﻿using BidvestMobilitySurveyBackendServer.Database;
+using BidvestMobilitySurveyBackendServer.Helpers;
 using BidvestMobilitySurveyBackendServer.Models;
 using BidvestMobilitySurveyBackendServer.Services;
 using MongoDB.Driver;
@@ -6,20 +7,37 @@ using System.Net;
 
 namespace BidvestMobilitySurveyBackendServer.Infrustructure;
 
-public class SurveyRepo : ISurvey
+internal class SurveyRepo : BaseRepository<Survey>, ISurvey
 {
     private readonly IRepository<Survey> survey;
+    private readonly IRepository<ProgrammingLanguages> programmingLanguages;
     private readonly IIDGenerator idGenerator;
+    private readonly IQueryBuilderProvider queryBuilderProvider;
 
-    public SurveyRepo(IRepository<Survey> survey, IIDGenerator idGenerator)
+    public SurveyRepo(
+                    RepositoryManager repositoryManager,
+                    IRepository<Survey> survey,
+                    IRepository<ProgrammingLanguages> programmingLanguages,
+                    IIDGenerator idGenerator,
+                    IQueryBuilderProvider queryBuilderProvider) : base(repositoryManager)
     {
         this.survey = survey;
         this.idGenerator = idGenerator;
+        this.queryBuilderProvider = queryBuilderProvider;
+        this.programmingLanguages = programmingLanguages;
     }
     public async Task<Response> GetSurveys()
     {
         var surveys = await survey.Find(_ => true);
-        return new Response<IEnumerable<Survey>>(surveys);
+
+        var querableLanguages =  programmingLanguages.AsQueryable();
+
+        var filtered = from survey in surveys
+                       join language in querableLanguages on survey.LanguageId equals language.Id into joinedLanguages
+                       select new { survey, joinedLanguages };
+        var result = filtered.AsEnumerable().Select(x=> ModelHelpers.From(x.survey,x.joinedLanguages));
+
+        return new Response<IEnumerable<GetSurvey>>(result);
     }
     public async Task<Response> AddSurvey(Survey _survey)
     {
